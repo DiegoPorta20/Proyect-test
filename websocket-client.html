@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Cliente - AWS Services</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        .status {
+            padding: 8px 15px;
+            border-radius: 20px;
+            display: inline-block;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        .status.connected {
+            background: #10b981;
+            color: white;
+        }
+
+        .status.disconnected {
+            background: #ef4444;
+            color: white;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .messages {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 2px solid #e5e7eb;
+            border-radius: 5px;
+            padding: 15px;
+            background: #f9fafb;
+        }
+
+        .message {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+            background: white;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        .message.notification {
+            border-left-color: #10b981;
+        }
+
+        .message.error {
+            border-left-color: #ef4444;
+        }
+
+        .message.warning {
+            border-left-color: #f59e0b;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #667eea;
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: #9ca3af;
+        }
+
+        .message-content {
+            color: #4b5563;
+        }
+
+        .info-box {
+            background: #eff6ff;
+            border: 1px solid #3b82f6;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .info-box strong {
+            color: #1e40af;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 WebSocket Cliente - AWS Services</h1>
+
+        <div class="grid">
+            <!-- Estado de Conexión -->
+            <div class="card">
+                <h2>📡 Estado de Conexión</h2>
+                <div class="status disconnected" id="status">Desconectado</div>
+                <div class="info-box">
+                    <strong>Socket ID:</strong> <span id="socketId">-</span><br>
+                    <strong>Usuario ID:</strong> <span id="currentUserId">-</span>
+                </div>
+                <input type="text" id="userId" placeholder="Tu ID de usuario (ej: user123)">
+                <button onclick="registerUser()">Registrar Usuario</button>
+            </div>
+
+            <!-- Enviar Mensaje -->
+            <div class="card">
+                <h2>💬 Enviar Mensaje Directo</h2>
+                <input type="text" id="toUser" placeholder="ID del destinatario">
+                <textarea id="messageText" placeholder="Escribe tu mensaje..." rows="3"></textarea>
+                <button onclick="sendMessage()">Enviar Mensaje</button>
+            </div>
+
+            <!-- Broadcast -->
+            <div class="card">
+                <h2>📢 Broadcast a Todos</h2>
+                <select id="broadcastType">
+                    <option value="info">Info</option>
+                    <option value="success">Éxito</option>
+                    <option value="warning">Advertencia</option>
+                    <option value="error">Error</option>
+                </select>
+                <textarea id="broadcastMessage" placeholder="Mensaje para todos..." rows="3"></textarea>
+                <button onclick="sendBroadcast()">Enviar a Todos</button>
+            </div>
+
+            <!-- Salas -->
+            <div class="card">
+                <h2>🏠 Gestión de Salas</h2>
+                <input type="text" id="roomName" placeholder="Nombre de la sala (ej: general)">
+                <button onclick="joinRoom()">Unirse a Sala</button>
+                <button onclick="leaveRoom()" style="background: #ef4444;">Salir de Sala</button>
+                <br><br>
+                <textarea id="roomMessage" placeholder="Mensaje para la sala..." rows="2"></textarea>
+                <button onclick="sendRoomMessage()">Enviar a Sala</button>
+            </div>
+        </div>
+
+        <!-- Mensajes Recibidos -->
+        <div class="card" style="margin-top: 20px;">
+            <h2>📨 Mensajes y Notificaciones Recibidas</h2>
+            <div class="messages" id="messages">
+                <p style="color: #9ca3af;">Esperando mensajes...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Conectar a WebSocket
+        const socket = io('http://localhost:3000', {
+            transports: ['websocket', 'polling']
+        });
+
+        // Estado de conexión
+        socket.on('connect', () => {
+            console.log('Conectado al servidor WebSocket');
+            updateStatus(true);
+            document.getElementById('socketId').textContent = socket.id;
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Desconectado del servidor');
+            updateStatus(false);
+        });
+
+        // Mensaje de bienvenida
+        socket.on('welcome', (data) => {
+            addMessage('Sistema', 'Bienvenido! ' + data.message, 'info');
+        });
+
+        // Usuario registrado
+        socket.on('registered', (data) => {
+            document.getElementById('currentUserId').textContent = data.data.userId;
+            addMessage('Sistema', data.data.message, 'info');
+        });
+
+        // Mensaje recibido
+        socket.on('newMessage', (data) => {
+            addMessage('Mensaje de ' + data.from, data.message, 'message');
+        });
+
+        // Broadcast recibido
+        socket.on('broadcastMessage', (data) => {
+            addMessage('Broadcast de ' + data.from, data.message, data.type);
+        });
+
+        // Notificaciones
+        socket.on('notification', (data) => {
+            addMessage(data.title, data.message, data.type, data.data);
+        });
+
+        // Mensaje de sala
+        socket.on('roomMessage', (data) => {
+            addMessage('Sala ' + data.room, 'De ' + data.from + ': ' + data.message, 'info');
+        });
+
+        // Usuario unido a sala
+        socket.on('userJoined', (data) => {
+            addMessage('Sistema', 'Usuario ' + data.userId + ' se unió a ' + data.room, 'info');
+        });
+
+        // Usuario salió de sala
+        socket.on('userLeft', (data) => {
+            addMessage('Sistema', 'Usuario ' + data.userId + ' salió de ' + data.room, 'info');
+        });
+
+        // Funciones
+        function updateStatus(connected) {
+            const status = document.getElementById('status');
+            if (connected) {
+                status.className = 'status connected';
+                status.textContent = 'Conectado';
+            } else {
+                status.className = 'status disconnected';
+                status.textContent = 'Desconectado';
+            }
+        }
+
+        function registerUser() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Por favor ingresa tu ID de usuario');
+                return;
+            }
+            socket.emit('register', { userId: userId });
+        }
+
+        function sendMessage() {
+            const to = document.getElementById('toUser').value;
+            const message = document.getElementById('messageText').value;
+            if (!to || !message) {
+                alert('Por favor completa todos los campos');
+                return;
+            }
+            socket.emit('sendMessage', { to: to, message: message });
+            document.getElementById('messageText').value = '';
+            addMessage('Tú', 'Enviaste: ' + message, 'info');
+        }
+
+        function sendBroadcast() {
+            const message = document.getElementById('broadcastMessage').value;
+            const type = document.getElementById('broadcastType').value;
+            if (!message) {
+                alert('Por favor escribe un mensaje');
+                return;
+            }
+            socket.emit('broadcast', { message: message, type: type });
+            document.getElementById('broadcastMessage').value = '';
+        }
+
+        function joinRoom() {
+            const room = document.getElementById('roomName').value;
+            if (!room) {
+                alert('Por favor ingresa el nombre de la sala');
+                return;
+            }
+            socket.emit('joinRoom', { room: room });
+        }
+
+        function leaveRoom() {
+            const room = document.getElementById('roomName').value;
+            if (!room) {
+                alert('Por favor ingresa el nombre de la sala');
+                return;
+            }
+            socket.emit('leaveRoom', { room: room });
+        }
+
+        function sendRoomMessage() {
+            const room = document.getElementById('roomName').value;
+            const message = document.getElementById('roomMessage').value;
+            if (!room || !message) {
+                alert('Por favor completa todos los campos');
+                return;
+            }
+            socket.emit('roomMessage', { room: room, message: message });
+            document.getElementById('roomMessage').value = '';
+        }
+
+        function addMessage(title, content, type = 'message', data = null) {
+            const messages = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message ' + type;
+            
+            const time = new Date().toLocaleTimeString();
+            
+            let dataHtml = '';
+            if (data) {
+                dataHtml = '<div style="margin-top: 5px; font-size: 12px; color: #6b7280;">' + 
+                           JSON.stringify(data, null, 2) + '</div>';
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span>${title}</span>
+                    <span class="message-time">${time}</span>
+                </div>
+                <div class="message-content">${content}${dataHtml}</div>
+            `;
+            
+            if (messages.children[0]?.textContent.includes('Esperando mensajes')) {
+                messages.innerHTML = '';
+            }
+            
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+    </script>
+</body>
+</html>

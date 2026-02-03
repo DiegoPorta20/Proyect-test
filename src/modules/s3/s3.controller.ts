@@ -13,12 +13,21 @@ import {
   Req,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { S3Service } from './s3.service';
+import { NotificationService } from '../websocket/notification.service';
+import { UploadedFile as UploadedFileEntity } from '../../entities/uploaded-file.entity';
 import * as express from 'express';
 
 @Controller('s3')
 export class S3Controller {
-  constructor(private readonly s3Service: S3Service) {}
+  constructor(
+    private readonly s3Service: S3Service,
+    private readonly notificationService: NotificationService,
+    @InjectRepository(UploadedFileEntity)
+    private uploadedFileRepository: Repository<UploadedFileEntity>,
+  ) {}
 
   /**
    * Endpoint para subir un archivo
@@ -29,12 +38,35 @@ export class S3Controller {
   async uploadFile(
     @UploadedFile() file: Express.Multer.File,
     @Query('folder') folder?: string,
+    @Query('userId') userId?: string,
   ) {
     if (!file) {
       throw new HttpException('No se proporcionó archivo', HttpStatus.BAD_REQUEST);
     }
 
     const result = await this.s3Service.uploadFile(file, folder);
+
+    // Guardar en base de datos
+    const uploadedFile = new UploadedFileEntity();
+    uploadedFile.originalName = file.originalname;
+    uploadedFile.fileName = result.key.split('/').pop() || result.key;
+    uploadedFile.fileKey = result.key;
+    uploadedFile.fileUrl = result.url;
+    uploadedFile.folder = folder || null;
+    uploadedFile.mimeType = file.mimetype;
+    uploadedFile.size = file.size;
+    uploadedFile.userId = userId || null;
+    uploadedFile.status = 'active';
+    await this.uploadedFileRepository.save(uploadedFile);
+
+    // Enviar notificación en tiempo real si se proporciona userId
+    if (userId) {
+      this.notificationService.notifyFileUploaded(
+        userId,
+        file.originalname,
+        result.url,
+      );
+    }
 
     return {
       statusCode: HttpStatus.OK,

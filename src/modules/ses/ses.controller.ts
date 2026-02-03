@@ -8,16 +8,23 @@ import {
   HttpStatus,
   ValidationPipe,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { SesService } from './ses.service';
 import {
   SendEmailDto,
   SendTemplatedEmailDto,
   CreateTemplateDto,
 } from './dto/ses.dto';
+import { SentEmail } from '../../entities/sent-email.entity';
 
 @Controller('ses')
 export class SesController {
-  constructor(private readonly sesService: SesService) {}
+  constructor(
+    private readonly sesService: SesService,
+    @InjectRepository(SentEmail)
+    private sentEmailRepository: Repository<SentEmail>,
+  ) {}
 
   /**
    * Endpoint para enviar un correo simple
@@ -34,6 +41,19 @@ export class SesController {
       bcc: dto.bcc,
       replyTo: dto.replyTo,
     });
+
+    // Guardar en base de datos
+    const sentEmail = this.sentEmailRepository.create({
+      messageId,
+      to: Array.isArray(dto.to) ? dto.to : [dto.to],
+      cc: dto.cc ? (Array.isArray(dto.cc) ? dto.cc : [dto.cc]) : [],
+      bcc: dto.bcc ? (Array.isArray(dto.bcc) ? dto.bcc : [dto.bcc]) : [],
+      subject: dto.subject,
+      body: dto.body,
+      isHtml: dto.isHtml || false,
+      status: 'sent',
+    });
+    await this.sentEmailRepository.save(sentEmail);
 
     return {
       statusCode: HttpStatus.OK,
@@ -56,6 +76,21 @@ export class SesController {
       bcc: dto.bcc,
       replyTo: dto.replyTo,
     });
+
+    // Guardar en base de datos
+    const sentEmail = this.sentEmailRepository.create({
+      messageId,
+      to: Array.isArray(dto.to) ? dto.to : [dto.to],
+      cc: dto.cc ? (Array.isArray(dto.cc) ? dto.cc : [dto.cc]) : [],
+      bcc: dto.bcc ? (Array.isArray(dto.bcc) ? dto.bcc : [dto.bcc]) : [],
+      subject: `Template: ${dto.templateName}`,
+      body: JSON.stringify(dto.templateData),
+      templateName: dto.templateName,
+      templateData: dto.templateData,
+      isHtml: true,
+      status: 'sent',
+    });
+    await this.sentEmailRepository.save(sentEmail);
 
     return {
       statusCode: HttpStatus.OK,

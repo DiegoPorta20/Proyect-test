@@ -7,12 +7,19 @@ import {
   Query,
   ValidationPipe,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { SqsService } from './sqs.service';
 import { SendMessageDto, SendMessageBatchDto } from './dto/sqs.dto';
+import { SqsMessage } from '../../entities/sqs-message.entity';
 
 @Controller('sqs')
 export class SqsController {
-  constructor(private readonly sqsService: SqsService) {}
+  constructor(
+    private readonly sqsService: SqsService,
+    @InjectRepository(SqsMessage)
+    private sqsMessageRepository: Repository<SqsMessage>,
+  ) {}
 
   /**
    * Endpoint para enviar un mensaje a la cola
@@ -25,6 +32,16 @@ export class SqsController {
       dto.delaySeconds,
       dto.messageAttributes,
     );
+
+    // Guardar en base de datos
+    const sqsMessage = this.sqsMessageRepository.create({
+      messageId,
+      messageBody: dto.message,
+      messageAttributes: dto.messageAttributes ? JSON.stringify(dto.messageAttributes) : null,
+      delaySeconds: dto.delaySeconds,
+      status: 'sent',
+    });
+    await this.sqsMessageRepository.save(sqsMessage);
 
     return {
       statusCode: HttpStatus.OK,
